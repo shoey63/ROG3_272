@@ -18,6 +18,13 @@
 #include "msm_cvp_internal.h"
 #include "msm_vidc_buffer_calculations.h"
 
+static struct kmem_cache *kmem_buf_pool;
+
+void __init init_vidc_kmem_buf_pool(void)
+{
+	kmem_buf_pool = KMEM_CACHE(msm_vidc_buffer, SLAB_HWCACHE_ALIGN | SLAB_PANIC);
+}
+
 #define IS_ALREADY_IN_STATE(__p, __d) (\
 	(__p >= __d)\
 )
@@ -3145,7 +3152,7 @@ static int msm_vidc_deinit_core(struct msm_vidc_inst *inst)
 		 * will have a burst of back to back video playback sessions
 		 * e.g. thumbnail generation.
 		 */
-		schedule_delayed_work(&core->fw_unload_work,
+		queue_delayed_work(system_power_efficient_wq, &core->fw_unload_work,
 			msecs_to_jiffies(core->state == VIDC_CORE_INIT_DONE ?
 			core->resources.msm_vidc_firmware_unload_delay : 0));
 
@@ -6930,7 +6937,7 @@ struct msm_vidc_buffer *msm_comm_get_vidc_buffer(struct msm_vidc_inst *inst,
 
 	if (!found) {
 		/* this is new vb2_buffer */
-		mbuf = kzalloc(sizeof(struct msm_vidc_buffer), GFP_KERNEL);
+		mbuf = kmem_cache_zalloc(kmem_buf_pool, GFP_KERNEL);
 		if (!mbuf) {
 			s_vpr_e(inst->sid, "%s: alloc msm_vidc_buffer failed\n",
 				__func__);
@@ -7221,7 +7228,7 @@ static void kref_free_mbuf(struct kref *kref)
 	struct msm_vidc_buffer *mbuf = container_of(kref,
 			struct msm_vidc_buffer, kref);
 
-	kfree(mbuf);
+	kmem_cache_free(kmem_buf_pool, mbuf);
 }
 
 void kref_put_mbuf(struct msm_vidc_buffer *mbuf)
